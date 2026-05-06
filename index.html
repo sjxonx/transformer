@@ -4,171 +4,698 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Transformer Sampling 탐구 보고서 — Top-k & Top-p 분석</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Libre+Franklin:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-:root{--bg:#FAF7F2;--bg2:#F3EDE4;--surface:#fff;--border:#DDD5C8;--border-l:#E8E1D6;--text:#2C2C2C;--text2:#5A5650;--text3:#948E84;--teal:#1A7A6D;--teal-l:#2B9E8E;--teal-p:rgba(26,122,109,.08);--coral:#D95D39;--coral-p:rgba(217,93,57,.08);--navy:#1E3250;--gold:#C5973B;--gold-p:rgba(197,151,59,.1);--serif:'Cormorant Garamond',Georgia,serif;--sans:'Libre Franklin','Noto Sans KR',sans-serif;--mono:'Fira Code',monospace;--sh-s:0 1px 3px rgba(0,0,0,.04),0 1px 2px rgba(0,0,0,.06);--sh-m:0 4px 16px rgba(0,0,0,.06),0 2px 6px rgba(0,0,0,.04);--sh-l:0 12px 40px rgba(0,0,0,.08)}
-*{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.75}
-body{overflow-x:hidden}
-::selection{background:var(--teal);color:#fff}
-body::after{content:'';position:fixed;inset:0;z-index:9999;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.015'/%3E%3C/svg%3E")}
-.fu{opacity:0;transform:translateY(50px);transition:opacity .9s cubic-bezier(.22,1,.36,1),transform .9s cubic-bezier(.22,1,.36,1)}.fu.v{opacity:1;transform:translateY(0)}
-.fl{opacity:0;transform:translateX(-50px);transition:opacity .8s ease,transform .8s ease}.fl.v{opacity:1;transform:translateX(0)}
-.fr{opacity:0;transform:translateX(50px);transition:opacity .8s ease,transform .8s ease}.fr.v{opacity:1;transform:translateX(0)}
-.fs{opacity:0;transform:scale(.94);transition:opacity .7s ease,transform .7s ease}.fs.v{opacity:1;transform:scale(1)}
-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(250,247,242,.92);backdrop-filter:blur(16px) saturate(1.4);border-bottom:1px solid var(--border-l);transition:transform .35s ease,box-shadow .35s ease}
-nav.sc{box-shadow:var(--sh-s)}nav.hi{transform:translateY(-100%)}
-.ni{max-width:1160px;margin:0 auto;padding:.7rem 2rem;display:flex;align-items:center;justify-content:space-between}
-.nl{font-family:var(--serif);font-weight:700;font-size:1.15rem;color:var(--teal);letter-spacing:-.5px}
-.nk{display:flex;gap:1.8rem}.nk a{color:var(--text3);text-decoration:none;font-size:.78rem;font-weight:500;letter-spacing:.3px;transition:color .3s}.nk a:hover{color:var(--teal)}
-.hero{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:8rem 2rem 5rem;position:relative;overflow:hidden}
-.hp{position:absolute;inset:0;opacity:.4;background-image:radial-gradient(circle at 20% 80%,var(--teal-p) 0%,transparent 50%),radial-gradient(circle at 80% 20%,var(--coral-p) 0%,transparent 50%),radial-gradient(circle at 50% 50%,var(--gold-p) 0%,transparent 40%)}
-.hl{position:absolute;top:50%;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent)}
-.hc{position:relative;z-index:1;max-width:780px;text-align:center}
-.he{font-family:var(--mono);font-size:.68rem;letter-spacing:4px;text-transform:uppercase;color:var(--coral);margin-bottom:1.8rem;animation:sd .8s ease both}
-.hero h1{font-family:var(--serif);font-size:clamp(2.6rem,5.5vw,4.2rem);font-weight:700;line-height:1.15;color:var(--navy);margin-bottom:1.5rem;letter-spacing:-1px;animation:su .9s .15s ease both}
-.hero h1 em{font-style:italic;color:var(--teal)}
-.hero .ld{font-size:1.1rem;color:var(--text2);font-weight:300;max-width:580px;margin:0 auto 2.5rem;animation:su .9s .3s ease both}
-.ht{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;animation:su .9s .45s ease both}
-.ht span{font-size:.75rem;font-weight:500;padding:.4rem 1rem;border-radius:100px;border:1px solid var(--border);color:var(--text2);background:var(--surface)}
-.ht strong{color:var(--teal);font-weight:600}
-.sc-c{position:absolute;bottom:2.5rem;left:50%;transform:translateX(-50%);animation:fl 3s ease-in-out infinite}
-.sc-c span{display:block;width:1px;height:40px;background:linear-gradient(to bottom,var(--teal),transparent)}
-@keyframes su{from{opacity:0;transform:translateY(35px)}to{opacity:1;transform:translateY(0)}}
-@keyframes sd{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fl{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(8px)}}
-section{padding:5rem 2rem}.w{max-width:1060px;margin:0 auto}
-.sn{font-family:var(--mono);font-size:.65rem;letter-spacing:3px;text-transform:uppercase;color:var(--coral);margin-bottom:.6rem}
-.st{font-family:var(--serif);font-size:clamp(1.8rem,3vw,2.6rem);font-weight:700;color:var(--navy);margin-bottom:.8rem;letter-spacing:-.5px;line-height:1.2}
-.sd{color:var(--text2);font-size:.98rem;max-width:660px;margin-bottom:2.5rem;font-weight:300}.sd a{color:var(--teal);text-decoration:underline;text-underline-offset:3px}
-.hr{height:1px;max-width:200px;margin:0 auto;background:var(--border)}
-.cr{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem}
-.cd{background:var(--surface);border:1px solid var(--border-l);border-radius:14px;padding:2rem;transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s ease}
-.cd:hover{transform:translateY(-6px);box-shadow:var(--sh-l)}
-.ci{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;margin-bottom:1.2rem}
-.cd:nth-child(1) .ci{background:var(--teal-p)}.cd:nth-child(2) .ci{background:var(--coral-p)}.cd:nth-child(3) .ci{background:var(--gold-p)}
-.cd h3{font-family:var(--serif);font-size:1.25rem;font-weight:700;color:var(--navy);margin-bottom:.6rem}
-.cd p{color:var(--text2);font-size:.9rem;font-weight:300}.cd p strong{font-weight:600;color:var(--text)}
-.tw{background:var(--surface);border:1px solid var(--border-l);border-radius:14px;overflow:hidden;box-shadow:var(--sh-s)}
-.tb{width:100%;border-collapse:collapse;font-size:.88rem}
-.tb th{background:var(--bg2);padding:.75rem 1.2rem;text-align:left;font-weight:600;font-size:.75rem;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)}
-.tb td{padding:.75rem 1.2rem;border-bottom:1px solid var(--border-l);color:var(--text2)}.tb tr:last-child td{border-bottom:none}
-.tb code{font-family:var(--mono);font-size:.8rem;background:var(--teal-p);color:var(--teal);padding:.15rem .5rem;border-radius:5px}
-.c2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem}.c1{margin-top:1.5rem}
-.ch{background:var(--surface);border:1px solid var(--border-l);border-radius:14px;padding:1.8rem;box-shadow:var(--sh-s);transition:box-shadow .3s}.ch:hover{box-shadow:var(--sh-m)}
-.ch h4{font-family:var(--serif);font-size:1.05rem;font-weight:700;color:var(--navy);margin-bottom:.2rem}
-.ch .cs{font-size:.78rem;color:var(--text3);margin-bottom:1.2rem;font-weight:300}
-.ch canvas{width:100%!important;max-height:380px}
-.dw{overflow-x:auto;border:1px solid var(--border-l);border-radius:14px;background:var(--surface);margin-top:1.5rem;max-height:460px;overflow-y:auto;box-shadow:var(--sh-s)}
-.dt{width:100%;border-collapse:collapse;font-size:.76rem;font-family:var(--mono)}
-.dt thead{position:sticky;top:0;z-index:2}
-.dt th{background:var(--bg2);padding:.55rem .7rem;text-align:center;font-weight:600;color:var(--teal);border-bottom:2px solid var(--teal);white-space:nowrap;font-size:.7rem}
-.dt td{padding:.5rem .7rem;border-bottom:1px solid var(--border-l);text-align:center;white-space:nowrap;color:var(--text2)}
-.dt tr:nth-child(even){background:var(--bg)}.dt tr:hover{background:var(--teal-p)}
-.sl{background:var(--teal-p);color:var(--teal);font-weight:700;border-radius:4px;padding:.1rem .4rem}
-.ins{background:var(--surface);border-left:4px solid var(--teal);border-radius:0 14px 14px 0;padding:1.8rem 2rem;margin:2.5rem 0;box-shadow:var(--sh-s)}
-.ins h4{font-family:var(--serif);font-size:1.1rem;color:var(--teal);margin-bottom:.6rem}
-.ins p{color:var(--text2);font-size:.9rem;font-weight:300}.ins ul{margin-top:.6rem;padding-left:1.2rem;color:var(--text2);font-size:.88rem}
-.ins li{margin-bottom:.4rem;font-weight:300}.ins li strong{font-weight:600;color:var(--text)}
-.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;margin-top:2rem}
-.ci2{background:var(--surface);border:1px solid var(--border-l);border-radius:14px;padding:2rem 1.5rem;text-align:center;transition:transform .4s cubic-bezier(.22,1,.36,1),box-shadow .4s}.ci2:hover{transform:translateY(-6px);box-shadow:var(--sh-l)}
-.cn{font-family:var(--serif);font-size:1.6rem;font-weight:700;margin-bottom:.4rem}
-.ci2:nth-child(1) .cn{color:var(--teal)}.ci2:nth-child(2) .cn{color:var(--coral)}.ci2:nth-child(3) .cn{color:var(--gold)}.ci2:nth-child(4) .cn{color:var(--navy)}
-.cl{font-size:.82rem;color:var(--text3);font-weight:300;line-height:1.5}
-.dls{text-align:center;padding:4.5rem 2rem}
-.dlb{display:inline-flex;align-items:center;gap:.7rem;padding:1rem 2.5rem;background:var(--teal);color:#fff;border:none;border-radius:100px;font-family:var(--sans);font-size:.95rem;font-weight:600;cursor:pointer;text-decoration:none;transition:transform .3s,box-shadow .3s,background .3s;box-shadow:0 4px 20px rgba(26,122,109,.25)}
-.dlb:hover{transform:translateY(-3px);box-shadow:0 8px 32px rgba(26,122,109,.35);background:var(--teal-l)}
-.dlb svg{width:18px;height:18px}
-footer{border-top:1px solid var(--border);padding:2.5rem 2rem;text-align:center;font-size:.78rem;color:var(--text3);background:var(--bg2)}footer a{color:var(--teal);text-decoration:none}
-@media(max-width:768px){.c2{grid-template-columns:1fr}.nk{display:none}section{padding:3rem 1rem}.hero{padding:7rem 1.5rem 4rem}}
+/* ========== APPLE DESIGN TOKENS ========== */
+:root {
+  --primary: #0066cc;
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+  --ink: #1d1d1f;
+  --ink-80: #333333;
+  --ink-48: #7a7a7a;
+  --canvas: #ffffff;
+  --parchment: #f5f5f7;
+  --pearl: #fafafc;
+  --tile1: #272729;
+  --tile2: #2a2a2c;
+  --tile3: #252527;
+  --black: #000000;
+  --on-dark: #ffffff;
+  --body-muted: #cccccc;
+  --hairline: #e0e0e0;
+  --divider: #f0f0f0;
+  --chip: #d2d2d7;
+  --display: "SF Pro Display", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --text: "SF Pro Text", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --section-pad: 80px;
+  --content-max: 980px;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--text);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+::selection { background: var(--primary); color: #fff; }
+
+/* ========== GLOBAL NAV ========== */
+.gnav {
+  position: fixed; top:0; left:0; right:0; z-index:1000;
+  background: rgba(0,0,0,0.92);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  transition: transform 0.35s ease;
+}
+.gnav.hide { transform: translateY(-100%); }
+.gnav-inner {
+  max-width: 980px; margin:0 auto;
+  padding: 0 22px;
+  height: 44px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.gnav-logo {
+  font-family: var(--display);
+  font-size: 14px; font-weight: 600;
+  color: var(--on-dark);
+  letter-spacing: -0.224px;
+  text-decoration: none;
+}
+.gnav-links { display:flex; gap:24px; }
+.gnav-links a {
+  font-family: var(--text);
+  font-size: 12px; font-weight: 400;
+  letter-spacing: -0.12px;
+  color: rgba(255,255,255,0.8);
+  text-decoration: none;
+  transition: color 0.3s;
+}
+.gnav-links a:hover { color: #fff; }
+
+/* ========== SECTIONS — FULL BLEED TILES ========== */
+.tile {
+  width: 100%;
+  padding: var(--section-pad) 22px;
+}
+.tile-light { background: var(--canvas); color: var(--ink); }
+.tile-parchment { background: var(--parchment); color: var(--ink); }
+.tile-dark { background: var(--tile1); color: var(--on-dark); }
+.tile-dark2 { background: var(--tile2); color: var(--on-dark); }
+.tile-dark3 { background: var(--tile3); color: var(--on-dark); }
+.tile-black { background: var(--black); color: var(--on-dark); }
+
+.tile-inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+/* ========== TYPOGRAPHY ========== */
+.hero-display {
+  font-family: var(--display);
+  font-size: 56px; font-weight: 600;
+  line-height: 1.07; letter-spacing: -0.28px;
+}
+.display-lg {
+  font-family: var(--display);
+  font-size: 40px; font-weight: 600;
+  line-height: 1.1; letter-spacing: 0;
+}
+.display-md {
+  font-family: var(--text);
+  font-size: 34px; font-weight: 600;
+  line-height: 1.47; letter-spacing: -0.374px;
+}
+.lead {
+  font-family: var(--display);
+  font-size: 28px; font-weight: 400;
+  line-height: 1.14; letter-spacing: 0.196px;
+}
+.lead-airy {
+  font-family: var(--text);
+  font-size: 24px; font-weight: 300;
+  line-height: 1.5; letter-spacing: 0;
+}
+.tagline {
+  font-family: var(--display);
+  font-size: 21px; font-weight: 600;
+  line-height: 1.19; letter-spacing: 0.231px;
+}
+.body-strong {
+  font-family: var(--text);
+  font-size: 17px; font-weight: 600;
+  line-height: 1.24; letter-spacing: -0.374px;
+}
+.caption {
+  font-family: var(--text);
+  font-size: 14px; font-weight: 400;
+  line-height: 1.43; letter-spacing: -0.224px;
+}
+.caption-strong {
+  font-family: var(--text);
+  font-size: 14px; font-weight: 600;
+  line-height: 1.29; letter-spacing: -0.224px;
+}
+.fine-print {
+  font-family: var(--text);
+  font-size: 12px; font-weight: 400;
+  line-height: 1.33; letter-spacing: -0.12px;
+}
+
+/* ========== LINKS & BUTTONS ========== */
+a.link { color: var(--primary); text-decoration: none; }
+a.link:hover { text-decoration: underline; }
+a.link-dark { color: var(--primary-on-dark); text-decoration: none; }
+a.link-dark:hover { text-decoration: underline; }
+
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--primary);
+  color: #fff;
+  font-family: var(--text);
+  font-size: 17px; font-weight: 400;
+  line-height: 1.47; letter-spacing: -0.374px;
+  padding: 8px 22px;
+  border: none; border-radius: 980px;
+  cursor: pointer; text-decoration: none;
+  transition: background 0.2s, transform 0.1s;
+}
+.btn-primary:hover { background: var(--primary-focus); }
+.btn-primary:active { transform: scale(0.95); }
+.btn-primary svg { width:16px; height:16px; }
+
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent;
+  color: var(--primary);
+  font-family: var(--text);
+  font-size: 17px; font-weight: 400;
+  letter-spacing: -0.374px;
+  padding: 8px 22px;
+  border: 1px solid var(--primary);
+  border-radius: 980px;
+  cursor: pointer; text-decoration: none;
+  transition: background 0.2s, color 0.2s, transform 0.1s;
+}
+.btn-secondary:hover { background: var(--primary); color: #fff; }
+.btn-secondary:active { transform: scale(0.95); }
+
+/* ========== HERO ========== */
+.hero-section {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 100px 22px var(--section-pad);
+}
+.hero-section .eyebrow {
+  font-family: var(--text);
+  font-size: 14px; font-weight: 600;
+  letter-spacing: -0.224px;
+  color: var(--ink-48);
+  margin-bottom: 12px;
+}
+.hero-section h1 { margin-bottom: 16px; }
+.hero-section .hero-lead {
+  max-width: 600px; margin: 0 auto 32px;
+}
+.hero-section .hero-lead.on-dark { color: var(--body-muted); }
+.hero-tags {
+  display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  margin-top: 24px;
+}
+.hero-tag {
+  font-size: 14px; font-weight: 400;
+  letter-spacing: -0.224px;
+  padding: 6px 16px;
+  border-radius: 980px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.8);
+}
+
+/* ========== SCROLL REVEAL ========== */
+.sr {
+  opacity: 0; transform: translateY(30px);
+  transition: opacity 0.7s cubic-bezier(0.25,1,0.5,1), transform 0.7s cubic-bezier(0.25,1,0.5,1);
+}
+.sr.v { opacity:1; transform:translateY(0); }
+
+/* ========== SECTION HEADER ========== */
+.sec-eyebrow {
+  font-size: 14px; font-weight: 600;
+  letter-spacing: -0.224px;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.tile-dark .sec-eyebrow,
+.tile-dark2 .sec-eyebrow,
+.tile-dark3 .sec-eyebrow,
+.tile-black .sec-eyebrow { color: var(--primary-on-dark); }
+.sec-desc {
+  max-width: 620px;
+  color: var(--ink-48);
+  margin-bottom: 48px;
+}
+.tile-dark .sec-desc,
+.tile-dark2 .sec-desc,
+.tile-dark3 .sec-desc,
+.tile-black .sec-desc { color: var(--body-muted); }
+
+/* ========== CARDS ========== */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 32px;
+}
+.card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  padding: 28px 24px;
+  transition: transform 0.3s cubic-bezier(0.25,1,0.5,1);
+}
+.card:hover { transform: scale(1.02); }
+.tile-dark .card,
+.tile-dark2 .card { background: var(--tile2); border-color: rgba(255,255,255,0.08); }
+.card-icon {
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+.card h3 {
+  font-family: var(--display);
+  font-size: 21px; font-weight: 600;
+  line-height: 1.19; letter-spacing: 0.231px;
+  margin-bottom: 8px;
+}
+.card p { color: var(--ink-48); font-size: 15px; line-height: 1.53; }
+.tile-dark .card p { color: var(--body-muted); }
+
+/* ========== METHOD TABLE ========== */
+.m-table-wrap {
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  overflow: hidden;
+  margin-top: 24px;
+}
+.tile-dark .m-table-wrap { border-color: rgba(255,255,255,0.08); }
+.m-table { width:100%; border-collapse:collapse; font-size:15px; }
+.m-table th {
+  background: var(--parchment);
+  padding: 12px 20px;
+  text-align: left;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: -0.12px;
+  color: var(--ink-48);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--hairline);
+}
+.m-table td {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--divider);
+  color: var(--ink-80);
+}
+.m-table tr:last-child td { border-bottom: none; }
+.m-table code {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 13px;
+  background: rgba(0,102,204,0.06);
+  color: var(--primary);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* ========== CHART CARDS ========== */
+.chart-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:24px; }
+.chart-1 { margin-top:24px; }
+.ch-card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  padding: 24px;
+}
+.tile-dark .ch-card { background: var(--tile2); border-color: rgba(255,255,255,0.08); }
+.ch-card h4 {
+  font-family: var(--display);
+  font-size: 21px; font-weight: 600;
+  letter-spacing: 0.231px;
+  margin-bottom: 4px;
+}
+.ch-card .ch-sub {
+  font-size: 14px; color: var(--ink-48);
+  letter-spacing: -0.224px;
+  margin-bottom: 20px;
+}
+.tile-dark .ch-card .ch-sub { color: var(--body-muted); }
+.ch-card canvas { width:100%!important; max-height:380px; }
+
+/* ========== DATA TABLE ========== */
+.dt-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  margin-top: 20px;
+  max-height: 440px;
+  overflow-y: auto;
+}
+.tile-dark .dt-wrap { border-color: rgba(255,255,255,0.08); }
+.dt { width:100%; border-collapse:collapse; font-family:"SF Mono","Fira Code",monospace; font-size:12px; }
+.dt thead { position:sticky; top:0; z-index:2; }
+.dt th {
+  background: var(--parchment);
+  padding: 8px 10px; text-align:center;
+  font-weight:600; color:var(--primary);
+  border-bottom: 2px solid var(--primary);
+  white-space:nowrap; font-size:11px;
+}
+.tile-dark .dt th { background: var(--tile3); color: var(--primary-on-dark); border-bottom-color: var(--primary-on-dark); }
+.dt td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--divider);
+  text-align:center; white-space:nowrap;
+  color: var(--ink-80);
+}
+.tile-dark .dt td { color: rgba(255,255,255,0.7); border-bottom-color: rgba(255,255,255,0.06); }
+.dt tr:nth-child(even) { background: var(--parchment); }
+.tile-dark .dt tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+.dt .sel {
+  background: rgba(0,102,204,0.1);
+  color: var(--primary);
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.tile-dark .dt .sel { background: rgba(41,151,255,0.15); color: var(--primary-on-dark); }
+
+/* ========== INSIGHT BOX ========== */
+.insight {
+  border-left: 3px solid var(--primary);
+  padding: 24px 28px;
+  margin: 40px 0;
+  background: rgba(0,102,204,0.03);
+  border-radius: 0 18px 18px 0;
+}
+.tile-dark .insight { background: rgba(41,151,255,0.05); border-left-color: var(--primary-on-dark); }
+.insight h4 {
+  font-family: var(--display);
+  font-size: 21px; font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.tile-dark .insight h4 { color: var(--primary-on-dark); }
+.insight p { color: var(--ink-48); font-size: 15px; }
+.tile-dark .insight p { color: var(--body-muted); }
+.insight ul { margin-top: 8px; padding-left: 20px; color: var(--ink-48); font-size: 15px; }
+.tile-dark .insight ul { color: var(--body-muted); }
+.insight li { margin-bottom: 4px; }
+.insight li strong { font-weight: 600; color: var(--ink); }
+.tile-dark .insight li strong { color: var(--on-dark); }
+
+/* ========== CONCLUSION ========== */
+.conc-grid {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 16px; margin-top: 32px;
+}
+.conc-item {
+  text-align:center; padding: 32px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 18px;
+  background: var(--canvas);
+  transition: transform 0.3s cubic-bezier(0.25,1,0.5,1);
+}
+.conc-item:hover { transform: scale(1.03); }
+.tile-dark .conc-item { background: var(--tile2); border-color: rgba(255,255,255,0.08); }
+.conc-num {
+  font-family: var(--display);
+  font-size: 28px; font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.tile-dark .conc-num { color: var(--primary-on-dark); }
+.conc-label { font-size: 14px; color: var(--ink-48); line-height: 1.43; }
+.tile-dark .conc-label { color: var(--body-muted); }
+
+/* ========== FOOTER ========== */
+footer {
+  background: var(--parchment);
+  padding: 64px 22px 24px;
+}
+footer .footer-inner {
+  max-width: var(--content-max); margin:0 auto;
+  text-align: center;
+}
+footer p {
+  font-size: 12px; font-weight: 400;
+  letter-spacing: -0.12px;
+  color: var(--ink-48);
+  line-height: 1.5;
+}
+footer a { color: var(--primary); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+/* ========== RESPONSIVE ========== */
+@media(max-width:833px) {
+  .card-grid { grid-template-columns: 1fr; }
+  .chart-2 { grid-template-columns: 1fr; }
+  .conc-grid { grid-template-columns: repeat(2,1fr); }
+  .gnav-links { display:none; }
+  .hero-display { font-size: 34px; }
+  .display-lg { font-size: 28px; }
+  :root { --section-pad: 48px; }
+}
+@media(max-width:640px) {
+  .hero-display { font-size: 28px; }
+  .conc-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
-<nav id="nb"><div class="ni"><div class="nl">Transformer Report</div><div class="nk"><a href="#intro">서론</a><a href="#method">실험 설계</a><a href="#topk">Top-k 분석</a><a href="#topp">Top-p 분석</a><a href="#disc">고찰</a><a href="#conc">결론</a><a href="#dl">자료</a></div></div></nav>
 
-<section class="hero"><div class="hp"></div><div class="hl"></div><div class="hc"><p class="he">Experimental Report 2025</p><h1>Transformer의 <em>Top-k &amp; Top-p</em><br>샘플링 전략 탐구</h1><p class="ld">Temperature, Top-k, Top-p 파라미터 변화에 따른 다음 토큰 확률 분포의 변동을 시각화하고 분석한 탐구 보고서</p><div class="ht"><span>📐 입력: <strong>"The robot learned to read"</strong></span><span>🔬 총 <strong>43회</strong> 실험</span><span>📊 Top-k <strong>32회</strong> · Top-p <strong>11회</strong></span></div></div><div class="sc-c"><span></span></div></section>
+<!-- GLOBAL NAV -->
+<nav class="gnav" id="gnav">
+  <div class="gnav-inner">
+    <a href="#" class="gnav-logo">Transformer Report</a>
+    <div class="gnav-links">
+      <a href="#intro">서론</a>
+      <a href="#method">실험 설계</a>
+      <a href="#topk">Top-k</a>
+      <a href="#topp">Top-p</a>
+      <a href="#disc">고찰</a>
+      <a href="#conc">결론</a>
+      <a href="#dl">자료</a>
+    </div>
+  </div>
+</nav>
 
-<section id="intro"><div class="w"><div class="fu"><p class="sn">01 — Introduction</p><h2 class="st">서론 · 탐구 동기 · 가설</h2><p class="sd">대규모 언어 모델(LLM)의 핵심인 Transformer는 다음 토큰을 예측할 때 <strong>샘플링 전략</strong>에 따라 전혀 다른 출력을 생성한다. 이 실험은 그 메커니즘을 직관적으로 이해하기 위해 설계되었다.</p></div>
-<div class="cr"><div class="cd fu" style="transition-delay:.1s"><div class="ci">🔍</div><h3>탐구 동기</h3><p>Transformer 모델이 "The robot learned to read" 다음에 올 단어를 예측할 때, Top-k와 Top-p 샘플링이 확률 분포에 어떤 변화를 일으키는지 궁금했다. Temperature와의 상호작용이 최종 토큰 선택에 미치는 영향을 정량적으로 분석하고자 하였다.</p></div>
-<div class="cd fu" style="transition-delay:.2s"><div class="ci">💡</div><h3>가설</h3><p><strong>가설 1:</strong> Temperature가 높아질수록 확률 분포가 균등해져, 상위 토큰 간 확률 차이가 줄어들 것이다.<br><strong>가설 2:</strong> Top-k 값이 작을수록 확률이 소수 토큰에 집중, 클수록 더 많은 토큰이 유효 확률을 가질 것이다.<br><strong>가설 3:</strong> Top-p는 누적 확률 기반이므로, 낮은 p에서는 적은 토큰만 선택, 높은 p에서는 더 다양한 토큰 허용.</p></div>
-<div class="cd fu" style="transition-delay:.3s"><div class="ci">🎯</div><h3>연구 목표</h3><p>Transformer Explainer 시각화 도구를 활용하여 Top-k와 Top-p 각각의 파라미터 조합에 따른 확률 분포 변화를 수집, 체계적으로 분류·시각화하여 샘플링 전략의 특성을 규명한다. 최종적으로 Temperature, k/p 값의 상호 관계를 도출한다.</p></div></div></div></section>
-<div class="hr"></div>
+<!-- HERO — BLACK TILE -->
+<section class="tile tile-black hero-section">
+  <div class="tile-inner" style="max-width:700px">
+    <p class="eyebrow caption-strong" style="color:var(--ink-48)">Experimental Report 2025</p>
+    <h1 class="hero-display" style="color:var(--on-dark)">Top-k & Top-p<br>샘플링 전략 탐구</h1>
+    <p class="lead-airy hero-lead on-dark">Temperature, Top-k, Top-p 파라미터 변화에 따른 다음 토큰 확률 분포의 변동을 시각화하고 분석한 탐구 보고서</p>
+    <div class="hero-tags">
+      <span class="hero-tag">"The robot learned to read"</span>
+      <span class="hero-tag">총 43회 실험</span>
+      <span class="hero-tag">Top-k 32회 · Top-p 11회</span>
+    </div>
+  </div>
+</section>
 
-<section id="method"><div class="w"><div class="fu"><p class="sn">02 — Methodology</p><h2 class="st">실험 설계 및 조건</h2><p class="sd">실험은 <a href="https://poloclub.github.io/transformer-explainer/" target="_blank">Transformer Explainer</a>를 사용하여 GPT-2 모델 기반으로 수행되었다.</p></div>
-<div class="tw fu"><table class="tb"><thead><tr><th>항목</th><th>내용</th><th>비고</th></tr></thead><tbody>
-<tr><td>입력 문장</td><td><code>"The robot learned to read"</code></td><td>고정 (통제 변인)</td></tr>
-<tr><td>모델</td><td>GPT-2 (Transformer Explainer 내장)</td><td>12 Transformer Blocks</td></tr>
-<tr><td>샘플링 방식</td><td>Top-k / Top-p (택 1)</td><td>독립 변인</td></tr>
-<tr><td>Temperature</td><td>0.2 ~ 10</td><td>조작 변인</td></tr>
-<tr><td>Top-k 범위</td><td>k = 1 ~ 50</td><td>조작 변인</td></tr>
-<tr><td>Top-p 범위</td><td>p = 0.5 ~ 0.9</td><td>조작 변인</td></tr>
-<tr><td>관측 대상</td><td>상위 10개 토큰의 확률 분포</td><td>종속 변인</td></tr>
-<tr><td>총 실험 횟수</td><td>43회 (Top-k: 32회, Top-p: 11회)</td><td>—</td></tr>
-</tbody></table></div></div></section>
-<div class="hr"></div>
+<!-- 01 INTRO — LIGHT -->
+<section class="tile tile-light" id="intro">
+  <div class="tile-inner">
+    <div class="sr">
+      <p class="sec-eyebrow caption-strong">01 — Introduction</p>
+      <h2 class="display-lg">서론 · 탐구 동기 · 가설</h2>
+      <p class="sec-desc">대규모 언어 모델(LLM)의 핵심인 Transformer는 다음 토큰을 예측할 때 샘플링 전략에 따라 전혀 다른 출력을 생성한다.</p>
+    </div>
+    <div class="card-grid">
+      <div class="card sr" style="transition-delay:.05s">
+        <div class="card-icon">🔍</div>
+        <h3>탐구 동기</h3>
+        <p>Transformer 모델이 "The robot learned to read" 다음에 올 단어를 예측할 때, Top-k와 Top-p 샘플링이 확률 분포에 어떤 변화를 일으키는지 궁금했다. Temperature와의 상호작용이 최종 토큰 선택에 미치는 영향을 정량적으로 분석하고자 하였다.</p>
+      </div>
+      <div class="card sr" style="transition-delay:.1s">
+        <div class="card-icon">💡</div>
+        <h3>가설</h3>
+        <p><strong>가설 1:</strong> Temperature가 높아질수록 확률 분포가 균등해질 것이다.<br><strong>가설 2:</strong> Top-k 값이 작을수록 확률이 소수 토큰에 집중될 것이다.<br><strong>가설 3:</strong> 낮은 p에서는 적은 토큰만, 높은 p에서는 더 다양한 토큰을 허용할 것이다.</p>
+      </div>
+      <div class="card sr" style="transition-delay:.15s">
+        <div class="card-icon">🎯</div>
+        <h3>연구 목표</h3>
+        <p>Transformer Explainer를 활용하여 Top-k와 Top-p 각각의 파라미터 조합에 따른 확률 분포 변화를 수집하고, 체계적으로 분류·시각화하여 샘플링 전략의 특성을 규명한다.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-<section id="topk"><div class="w"><div class="fu"><p class="sn">03 — Top-k Sampling Analysis</p><h2 class="st">Top-k 샘플링 결과 분석</h2><p class="sd">Top-k 샘플링은 확률이 가장 높은 k개의 토큰만을 후보로 남기고, 남은 토큰 중에서 확률적으로 선택하는 방식이다.</p></div>
-<div class="c2"><div class="ch fl"><h4>Temperature ↔ 1순위 확률</h4><p class="cs">Temperature 상승 시 1순위 확률 감소 경향</p><canvas id="c1"></canvas></div><div class="ch fr"><h4>k값 ↔ 1순위 확률</h4><p class="cs">k가 작을수록 상위 토큰에 확률 집중</p><canvas id="c2"></canvas></div></div>
-<div class="c1"><div class="ch fs"><h4>k=5 고정 — Temperature별 상위 5개 토큰 확률</h4><p class="cs">동일 k 조건에서 Temperature 변화에 따른 확률 분포 변동</p><canvas id="c3" style="max-height:340px"></canvas></div></div>
-<div class="c2"><div class="ch fl"><h4>유효 토큰 수 (확률 &gt; 0%)</h4><p class="cs">k가 클수록 0%가 아닌 토큰 수 증가</p><canvas id="c4"></canvas></div><div class="ch fr"><h4>선택된 토큰 빈도</h4><p class="cs">최종 선택된 토큰의 빈도 분포</p><canvas id="c5"></canvas></div></div>
-<div class="ins fu"><h4>📊 Top-k 핵심 관찰</h4><p>Temperature와 k값은 독립적이지만 상호보완적으로 작동한다.</p><ul><li><strong>낮은 Temp(0.2) + 낮은 k(1~5):</strong> "use"가 67~100%로 압도적. 결정적 선택.</li><li><strong>높은 Temp(5~10) + 낮은 k(5):</strong> 5개 토큰이 각 ~20%로 균등. softmax 평탄화.</li><li><strong>높은 Temp + 높은 k(38~50):</strong> 모든 토큰 2~5%대. 사실상 랜덤 수렴.</li><li><strong>중간 Temp(0.5~1) + 중간 k(8~20):</strong> "use"가 1순위이나 우위 감소, 다양한 토큰 유의미.</li></ul></div>
-<h4 style="font-family:var(--serif);color:var(--navy);margin-top:2.5rem" class="fu">Top-k 전체 데이터</h4>
-<div class="dw fu"><table class="dt"><thead><tr><th>No.</th><th>Temp</th><th>k</th><th>선택</th><th>1st</th><th>2nd</th><th>3rd</th><th>4th</th><th>5th</th><th>6th</th><th>7th</th><th>8th</th><th>9th</th><th>10th</th></tr></thead><tbody id="tb-k"></tbody></table></div>
-</div></section>
-<div class="hr"></div>
+<!-- 02 METHOD — PARCHMENT -->
+<section class="tile tile-parchment" id="method">
+  <div class="tile-inner">
+    <div class="sr">
+      <p class="sec-eyebrow caption-strong">02 — Methodology</p>
+      <h2 class="display-lg">실험 설계 및 조건</h2>
+      <p class="sec-desc">실험은 <a href="https://poloclub.github.io/transformer-explainer/" target="_blank" class="link">Transformer Explainer</a>를 사용하여 GPT-2 모델 기반으로 수행되었다.</p>
+    </div>
+    <div class="m-table-wrap sr">
+      <table class="m-table">
+        <thead><tr><th>항목</th><th>내용</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td>입력 문장</td><td><code>"The robot learned to read"</code></td><td>고정 (통제 변인)</td></tr>
+          <tr><td>모델</td><td>GPT-2 (Transformer Explainer)</td><td>12 Transformer Blocks</td></tr>
+          <tr><td>샘플링 방식</td><td>Top-k / Top-p (택 1)</td><td>독립 변인</td></tr>
+          <tr><td>Temperature</td><td>0.2 ~ 10</td><td>조작 변인</td></tr>
+          <tr><td>Top-k 범위</td><td>k = 1 ~ 50</td><td>조작 변인</td></tr>
+          <tr><td>Top-p 범위</td><td>p = 0.5 ~ 0.9</td><td>조작 변인</td></tr>
+          <tr><td>관측 대상</td><td>상위 10개 토큰 확률 분포</td><td>종속 변인</td></tr>
+          <tr><td>총 실험 횟수</td><td>43회 (Top-k 32 · Top-p 11)</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
 
-<section id="topp"><div class="w"><div class="fu"><p class="sn">04 — Top-p (Nucleus) Sampling Analysis</p><h2 class="st">Top-p 샘플링 결과 분석</h2><p class="sd">Top-p(Nucleus) 샘플링은 누적 확률이 p를 초과하는 지점까지만 후보군으로 유지하는 동적인 방식이다.</p></div>
-<div class="c2"><div class="ch fl"><h4>Temperature ↔ 1순위 확률</h4><p class="cs">Top-p에서도 Temperature 상승 시 1순위 확률 감소</p><canvas id="c6"></canvas></div><div class="ch fr"><h4>전체 실험: 상위 5개 토큰 스택</h4><p class="cs">각 실험별 상위 5개 토큰 확률을 스택바로 비교</p><canvas id="c7"></canvas></div></div>
-<div class="c2"><div class="ch fl"><h4>전체 10개 토큰 확률 분포</h4><p class="cs">실험별 10개 토큰 확률 스택 시각화</p><canvas id="c8"></canvas></div><div class="ch fr"><h4>선택된 토큰 빈도</h4><p class="cs">최종 선택된 토큰의 빈도 분포</p><canvas id="c9"></canvas></div></div>
-<div class="ins fu"><h4>📊 Top-p 핵심 관찰</h4><p>Top-p는 Top-k와 달리 후보 토큰 수가 확률 분포에 따라 <strong>동적으로</strong> 변한다.</p><ul><li><strong>낮은 Temp(0.2) + p=0.7:</strong> "use"(84.61%)와 "walk"(15.39%)만 후보. 누적 100% 즉시 도달.</li><li><strong>높은 Temp(7~8) + 높은 p:</strong> 모든 토큰 2~5% 균등 → Top-k와 유사한 평탄화.</li><li><strong>p=0.5 vs p=0.9:</strong> p가 높을수록 더 많은 토큰이 후보에 포함.</li><li><strong>적응성:</strong> 모델 확신 시 소수 토큰 선택, 불확실 시 다수 토큰 허용.</li></ul></div>
-<h4 style="font-family:var(--serif);color:var(--navy);margin-top:2.5rem" class="fu">Top-p 전체 데이터</h4>
-<div class="dw fu"><table class="dt"><thead><tr><th>No.</th><th>Temp</th><th>p</th><th>선택</th><th>1st</th><th>2nd</th><th>3rd</th><th>4th</th><th>5th</th><th>6th</th><th>7th</th><th>8th</th><th>9th</th><th>10th</th></tr></thead><tbody id="tb-p"></tbody></table></div>
-</div></section>
-<div class="hr"></div>
+<!-- 03 TOP-K — DARK -->
+<section class="tile tile-dark" id="topk">
+  <div class="tile-inner">
+    <div class="sr">
+      <p class="sec-eyebrow caption-strong">03 — Top-k Sampling Analysis</p>
+      <h2 class="display-lg">Top-k 샘플링 결과 분석</h2>
+      <p class="sec-desc">확률이 가장 높은 k개의 토큰만을 후보로 남기고, 남은 토큰 중에서 확률적으로 선택하는 정적 필터링 방식.</p>
+    </div>
+    <div class="chart-2"><div class="ch-card sr"><h4>Temperature ↔ 1순위 확률</h4><p class="ch-sub">Temperature 상승 시 1순위 확률 감소</p><canvas id="c1"></canvas></div><div class="ch-card sr"><h4>k값 ↔ 1순위 확률</h4><p class="ch-sub">k가 작을수록 상위 토큰에 확률 집중</p><canvas id="c2"></canvas></div></div>
+    <div class="chart-1"><div class="ch-card sr"><h4>k=5 고정 — Temperature별 상위 5개 토큰</h4><p class="ch-sub">동일 k에서 Temperature 변화에 따른 확률 변동</p><canvas id="c3" style="max-height:320px"></canvas></div></div>
+    <div class="chart-2"><div class="ch-card sr"><h4>유효 토큰 수 (확률 &gt; 0%)</h4><p class="ch-sub">k가 클수록 0%가 아닌 토큰 수 증가</p><canvas id="c4"></canvas></div><div class="ch-card sr"><h4>선택된 토큰 빈도</h4><p class="ch-sub">최종 선택된 토큰의 빈도 분포</p><canvas id="c5"></canvas></div></div>
+    <div class="insight sr"><h4>핵심 관찰</h4><ul><li><strong>낮은 Temp(0.2) + 낮은 k(1~5):</strong> "use"가 67~100%로 압도적 결정적 선택.</li><li><strong>높은 Temp(5~10) + 낮은 k(5):</strong> 5개 토큰이 각 ~20%로 균등 분포.</li><li><strong>높은 Temp + 높은 k(38~50):</strong> 모든 토큰 2~5%대. 사실상 랜덤 수렴.</li><li><strong>중간 Temp(0.5~1) + 중간 k:</strong> "use"가 1순위이나 다양한 토큰 유의미.</li></ul></div>
+    <h4 class="tagline sr" style="margin-top:40px">Top-k 전체 데이터</h4>
+    <div class="dt-wrap sr"><table class="dt"><thead><tr><th>No.</th><th>Temp</th><th>k</th><th>선택</th><th>1st</th><th>2nd</th><th>3rd</th><th>4th</th><th>5th</th><th>6th</th><th>7th</th><th>8th</th><th>9th</th><th>10th</th></tr></thead><tbody id="tb-k"></tbody></table></div>
+  </div>
+</section>
 
-<section id="disc"><div class="w"><div class="fu"><p class="sn">05 — Discussion</p><h2 class="st">고찰 및 해석</h2></div>
-<div class="cr"><div class="cd fu" style="transition-delay:.1s"><div class="ci">🔥</div><h3>Temperature의 역할</h3><p>Temperature는 softmax 분포 형태를 직접 제어한다. 낮은 값(0.2)에서 1순위가 62~100%이던 것이 5 이상에서는 3~21%로 평탄화. logit을 Temperature로 나누면서 값의 차이가 축소되기 때문이다.<br><br><strong>핵심:</strong> "모델이 얼마나 자신감 있게 선택하는가"를 조절하는 매개변수.</p></div>
-<div class="cd fu" style="transition-delay:.2s"><div class="ci">🎯</div><h3>Top-k: 정적 필터링</h3><p>k=5로 고정하면 모델 확신도와 <strong>무관하게</strong> 항상 5개 토큰만 남는다. 낮은 Temp에서 "use"가 67%로 독주하지만, 높은 Temp에서는 5개 토큰이 ~20%로 균등. k가 커지면(30~50) 높은 Temperature에서 사실상 랜덤에 가까워진다.</p></div>
-<div class="cd fu" style="transition-delay:.3s"><div class="ci">🌊</div><h3>Top-p: 동적 적응</h3><p>확률 분포의 형태에 따라 후보 토큰 수가 <strong>자동 조절</strong>된다. Temp 0.2, p=0.7에서는 2개만으로 누적 100%이지만, Temp 8, p=0.9에서는 10개 이상 포함. 이 적응성 덕분에 확신 시 정확, 불확실 시 다양하게 생성.</p></div></div>
-<div class="ins fu" style="margin-top:2.5rem;border-left-color:var(--coral)"><h4 style="color:var(--coral)">🔬 가설 검증 결과</h4><p><strong>가설 1 ✅:</strong> Temperature 상승 → 확률 분포 균등화. Temp 0.2에서 1순위 62~100% → Temp 5+ 에서 3~21%.</p><p style="margin-top:.4rem"><strong>가설 2 ✅:</strong> k=1일 때 100%, k=5일 때 상위 5개 집중, k=50일 때 10개 이상 분산 확인.</p><p style="margin-top:.4rem"><strong>가설 3 ✅:</strong> p=0.5에서 2~3개 토큰, p=0.9에서 더 많은 토큰 허용 → 다양성 증가 확인.</p></div>
-</div></section>
-<div class="hr"></div>
+<!-- 04 TOP-P — LIGHT -->
+<section class="tile tile-light" id="topp">
+  <div class="tile-inner">
+    <div class="sr">
+      <p class="sec-eyebrow caption-strong">04 — Top-p (Nucleus) Sampling</p>
+      <h2 class="display-lg">Top-p 샘플링 결과 분석</h2>
+      <p class="sec-desc">누적 확률이 p를 초과하는 지점까지만 후보군으로 유지하는 동적 필터링 방식.</p>
+    </div>
+    <div class="chart-2"><div class="ch-card sr"><h4>Temperature ↔ 1순위 확률</h4><p class="ch-sub">Top-p에서도 Temperature 상승 시 1순위 확률 감소</p><canvas id="c6"></canvas></div><div class="ch-card sr"><h4>상위 5개 토큰 스택</h4><p class="ch-sub">각 실험별 상위 5개 토큰 확률 비교</p><canvas id="c7"></canvas></div></div>
+    <div class="chart-2"><div class="ch-card sr"><h4>전체 10개 토큰 분포</h4><p class="ch-sub">실험별 10개 토큰 확률 스택 시각화</p><canvas id="c8"></canvas></div><div class="ch-card sr"><h4>선택된 토큰 빈도</h4><p class="ch-sub">최종 선택된 토큰의 빈도 분포</p><canvas id="c9"></canvas></div></div>
+    <div class="insight sr"><h4>핵심 관찰</h4><ul><li><strong>낮은 Temp(0.2) + p=0.7:</strong> "use"(84.61%)와 "walk"(15.39%)만 후보. 극도로 집중.</li><li><strong>높은 Temp(7~8) + 높은 p:</strong> 모든 토큰 2~5% 균등. Top-k와 유사한 평탄화.</li><li><strong>p=0.5 vs p=0.9:</strong> p가 높을수록 더 많은 토큰이 후보에 포함.</li><li><strong>적응성:</strong> 모델 확신 시 소수 토큰, 불확실 시 다수 토큰 허용.</li></ul></div>
+    <h4 class="tagline sr" style="margin-top:40px">Top-p 전체 데이터</h4>
+    <div class="dt-wrap sr"><table class="dt"><thead><tr><th>No.</th><th>Temp</th><th>p</th><th>선택</th><th>1st</th><th>2nd</th><th>3rd</th><th>4th</th><th>5th</th><th>6th</th><th>7th</th><th>8th</th><th>9th</th><th>10th</th></tr></thead><tbody id="tb-p"></tbody></table></div>
+  </div>
+</section>
 
-<section id="conc"><div class="w"><div class="fu"><p class="sn">06 — Conclusion</p><h2 class="st">결론</h2><p class="sd">본 탐구를 통해 Temperature, Top-k, Top-p가 각각 어떤 역할을 수행하며, 서로 어떻게 상호작용하는지를 정량적으로 확인하였다.</p></div>
-<div class="cg"><div class="ci2 fu" style="transition-delay:.1s"><div class="cn">T ↑ = 균등</div><div class="cl">Temperature 상승 시<br>확률 분포 평탄화</div></div><div class="ci2 fu" style="transition-delay:.2s"><div class="cn">k ↑ = 다양</div><div class="cl">k 증가 시<br>후보 토큰 수 증가 (정적)</div></div><div class="ci2 fu" style="transition-delay:.3s"><div class="cn">p = 적응</div><div class="cl">Top-p는 분포에 따라<br>후보 수 동적 조절</div></div><div class="ci2 fu" style="transition-delay:.4s"><div class="cn">T × k/p</div><div class="cl">Temperature와 k/p는<br>상호보완적으로 작용</div></div></div>
-<div class="ins fu" style="margin-top:2.5rem;border-left-color:var(--gold)"><h4 style="color:var(--gold)">💡 실용적 시사점</h4><p>정확하고 일관된 출력 → <strong>낮은 Temperature(0.2~0.5) + 작은 k(3~5) 또는 낮은 p(0.5)</strong><br>창의적이고 다양한 출력 → <strong>높은 Temperature(0.8~1.2) + 큰 k(30~50) 또는 높은 p(0.9)</strong><br>Top-p는 Top-k에 비해 확률 분포에 적응적이므로, 일반적으로 더 안정적인 결과를 제공하는 경향이 있다.</p></div>
-</div></section>
-<div class="hr"></div>
+<!-- 05 DISCUSSION — DARK2 -->
+<section class="tile tile-dark2" id="disc">
+  <div class="tile-inner">
+    <div class="sr">
+      <p class="sec-eyebrow caption-strong">05 — Discussion</p>
+      <h2 class="display-lg">고찰 및 해석</h2>
+    </div>
+    <div class="card-grid">
+      <div class="card sr"><div class="card-icon">🔥</div><h3>Temperature</h3><p>softmax 분포 형태를 직접 제어. Temp 0.2에서 1순위 62~100% → Temp 5+에서 3~21%로 평탄화. "모델의 자신감"을 조절하는 매개변수.</p></div>
+      <div class="card sr"><div class="card-icon">🎯</div><h3>Top-k: 정적 필터링</h3><p>k=5 고정 시 모델 확신도와 무관하게 항상 5개만 남음. 낮은 Temp에서 "use" 67% 독주, 높은 Temp에서 5개 토큰 각 ~20% 균등.</p></div>
+      <div class="card sr"><div class="card-icon">🌊</div><h3>Top-p: 동적 적응</h3><p>확률 분포에 따라 후보 수 자동 조절. Temp 0.2 / p=0.7에서 2개, Temp 8 / p=0.9에서 10개 이상. 확신 시 정확, 불확실 시 다양하게 생성.</p></div>
+    </div>
+    <div class="insight sr" style="margin-top:40px">
+      <h4>가설 검증 결과</h4>
+      <p><strong>가설 1 ✅</strong> Temperature 상승 → 확률 분포 균등화. Temp 0.2에서 62~100% → Temp 5+에서 3~21%.</p>
+      <p style="margin-top:6px"><strong>가설 2 ✅</strong> k=1일 때 100%, k=5일 때 상위 5개 집중, k=50일 때 10개 이상 분산.</p>
+      <p style="margin-top:6px"><strong>가설 3 ✅</strong> p=0.5에서 2~3개, p=0.9에서 더 많은 토큰 허용 → 다양성 증가 확인.</p>
+    </div>
+  </div>
+</section>
 
-<section id="dl" class="dls"><div class="w"><div class="fu"><p class="sn">Appendix</p><h2 class="st" style="text-align:center">실험 데이터 다운로드</h2><p class="sd" style="text-align:center;margin:0 auto 2rem">Top-k (32회) 및 Top-p (11회) 실험의 전체 데이터가 포함된 Excel 파일</p><div style="text-align:center"><a href="transformer_topk_topp_data.xlsx" download class="dlb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>transformer_topk_topp_data.xlsx</a></div></div></div></section>
+<!-- 06 CONCLUSION — PARCHMENT -->
+<section class="tile tile-parchment" id="conc">
+  <div class="tile-inner">
+    <div class="sr">
+      <p class="sec-eyebrow caption-strong">06 — Conclusion</p>
+      <h2 class="display-lg">결론</h2>
+      <p class="sec-desc">Temperature, Top-k, Top-p가 각각 어떤 역할을 수행하며, 서로 어떻게 상호작용하는지를 정량적으로 확인하였다.</p>
+    </div>
+    <div class="conc-grid">
+      <div class="conc-item sr"><div class="conc-num">T ↑ = 균등</div><div class="conc-label">Temperature 상승 시<br>확률 분포 평탄화</div></div>
+      <div class="conc-item sr"><div class="conc-num">k ↑ = 다양</div><div class="conc-label">k 증가 시<br>후보 토큰 증가 (정적)</div></div>
+      <div class="conc-item sr"><div class="conc-num">p = 적응</div><div class="conc-label">Top-p는 분포에 따라<br>후보 수 동적 조절</div></div>
+      <div class="conc-item sr"><div class="conc-num">T × k/p</div><div class="conc-label">Temperature와 k/p는<br>상호보완적 작용</div></div>
+    </div>
+    <div class="insight sr" style="margin-top:40px">
+      <h4>실용적 시사점</h4>
+      <p>정확하고 일관된 출력 → <strong>낮은 Temperature(0.2~0.5) + 작은 k(3~5) 또는 낮은 p(0.5)</strong><br>창의적이고 다양한 출력 → <strong>높은 Temperature(0.8~1.2) + 큰 k(30~50) 또는 높은 p(0.9)</strong><br>Top-p는 확률 분포에 적응적이므로, 일반적으로 더 안정적인 결과를 제공하는 경향이 있다.</p>
+    </div>
+  </div>
+</section>
 
-<footer><p>Transformer Sampling 탐구 보고서 · 실험 도구: <a href="https://poloclub.github.io/transformer-explainer/" target="_blank">Transformer Explainer</a> (Georgia Tech · Polo Club of Data Science)</p><p style="margin-top:.3rem">© 2025 Transformer Sampling Analysis Report</p></footer>
+<!-- DOWNLOAD — LIGHT -->
+<section class="tile tile-light" id="dl" style="text-align:center">
+  <div class="tile-inner sr">
+    <p class="sec-eyebrow caption-strong">Appendix</p>
+    <h2 class="display-lg">실험 데이터 다운로드</h2>
+    <p class="sec-desc" style="text-align:center;margin:16px auto 32px">Top-k (32회) 및 Top-p (11회) 실험의 전체 데이터가 포함된 Excel 파일</p>
+    <a href="transformer_topk_topp_data.xlsx" download class="btn-primary" style="font-size:17px;padding:12px 28px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      transformer_topk_topp_data.xlsx
+    </a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <p>Transformer Sampling 탐구 보고서 · 실험 도구: <a href="https://poloclub.github.io/transformer-explainer/" target="_blank">Transformer Explainer</a> (Georgia Tech · Polo Club of Data Science)</p>
+    <p style="margin-top:8px;color:var(--ink-48)">© 2025 Transformer Sampling Analysis Report</p>
+  </div>
+</footer>
 
 <script>
+// === DATA ===
 const K=[{n:1,t:.2,k:1,s:"use",p:[["use",100],["walk",0],["recognize",0],["read",0],["move",0],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:2,t:.2,k:5,s:"use",p:[["use",67.48],["walk",12.27],["recognize",8.49],["read",8.43],["move",3.33],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:3,t:.2,k:11,s:"use",p:[["use",63.53],["walk",11.55],["recognize",7.99],["read",7.93],["move",3.14],["be",1.75],["play",1.5],["control",1],["do",0],["speak",0]]},{n:4,t:.2,k:27,s:"use",p:[["use",62.94],["walk",11.45],["recognize",7.92],["read",7.86],["move",3.11],["be",1.73],["play",1.48],["control",0],["do",0],["speak",0]]},{n:5,t:.2,k:40,s:"use",p:[["use",62.9],["walk",11.44],["recognize",7.91],["read",7.85],["move",3.11],["be",1.73],["play",1.48],["control",0],["do",0],["speak",0]]},{n:6,t:.3,k:5,s:"use",p:[["use",51.11],["walk",16.41],["recognize",12.83],["read",12.77],["move",6.88],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:7,t:.5,k:8,s:"recognize",p:[["use",30.04],["walk",15.19],["recognize",13.11],["read",13.07],["move",9.02],["be",7.14],["play",6.71],["control",5.71],["do",0],["speak",0]]},{n:8,t:.5,k:13,s:"move",p:[["use",25.17],["walk",12.73],["recognize",10.99],["read",10.95],["move",7.56],["be",5.98],["play",5.62],["control",4.79],["do",4.05],["speak",3.87]]},{n:9,t:.5,k:20,s:"recognize",p:[["use",22.82],["walk",11.54],["recognize",9.96],["read",9.93],["move",6.85],["be",5.43],["play",5.1],["control",4.34],["do",3.67],["speak",3.51]]},{n:10,t:.5,k:34,s:"walk",p:[["use",20.76],["walk",10.5],["recognize",9.06],["read",9.03],["move",6.23],["be",4.93],["play",4.63],["control",3.95],["do",3.34],["speak",3.19]]},{n:11,t:.5,k:40,s:"move",p:[["use",20.39],["walk",10.31],["recognize",8.9],["read",8.87],["move",6.12],["be",4.85],["play",4.55],["control",3.88],["do",3.28],["speak",3.13]]},{n:12,t:.5,k:49,s:"ignore",p:[["use",20.04],["walk",10.13],["recognize",8.75],["read",8.72],["move",6.02],["be",4.76],["play",4.48],["control",3.81],["do",3.22],["speak",3.08]]},{n:13,t:.6,k:1,s:"use",p:[["use",100],["walk",0],["recognize",0],["read",0],["move",0],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:14,t:.7,k:5,s:"walk",p:[["use",31.82],["walk",19.55],["recognize",17.6],["read",17.56],["move",13.47],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:15,t:1,k:4,s:"recognize",p:[["use",32.99],["walk",23.46],["recognize",21.79],["read",21.76],["move",0],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:16,t:1,k:5,s:"use",p:[["use",27.94],["walk",19.87],["recognize",18.46],["read",18.43],["move",15.31],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:17,t:1,k:9,s:"play",p:[["use",18.6],["walk",13.23],["recognize",12.29],["read",12.27],["move",10.19],["be",9.07],["play",8.79],["control",8.11],["do",7.46],["speak",0]]},{n:18,t:1,k:16,s:"walk",p:[["use",13.27],["walk",9.44],["recognize",8.77],["read",8.75],["move",7.27],["be",6.47],["play",6.27],["control",5.79],["do",5.32],["speak",5.2]]},{n:19,t:1,k:30,s:"do",p:[["use",9.72],["walk",6.91],["recognize",6.42],["read",6.41],["move",5.32],["be",4.74],["play",4.59],["control",4.24],["do",3.9],["speak",3.81]]},{n:20,t:1,k:37,s:"recognize",p:[["use",8.86],["walk",6.3],["recognize",5.85],["read",5.84],["move",4.85],["be",4.32],["play",4.19],["control",3.86],["do",3.55],["speak",3.47]]},{n:21,t:1,k:50,s:"control",p:[["use",7.94],["walk",5.65],["recognize",5.25],["read",5.24],["move",4.35],["be",3.87],["play",3.75],["control",3.46],["do",3.19],["speak",3.11]]},{n:22,t:2,k:5,s:"recognize",p:[["use",23.76],["walk",20.04],["recognize",19.31],["read",19.3],["move",17.59],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:23,t:3,k:5,s:"recognize",p:[["use",22.46],["walk",20.05],["recognize",19.56],["read",19.55],["move",18.38],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:24,t:5,k:5,s:"move",p:[["use",21.45],["walk",20.04],["recognize",19.75],["read",19.74],["move",19.02],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:25,t:5,k:5,s:"walk",p:[["use",21.45],["walk",20.04],["recognize",19.75],["read",19.74],["move",19.02],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:26,t:5,k:11,s:"recognize",p:[["use",10.3],["walk",9.62],["recognize",9.48],["read",9.48],["move",9.13],["be",8.92],["play",8.86],["control",8.72],["do",8.58],["speak",8.54]]},{n:27,t:5,k:24,s:"navigate",p:[["use",5.14],["walk",4.8],["recognize",4.73],["read",4.73],["move",4.55],["be",4.45],["play",4.42],["control",4.35],["do",4.28],["speak",4.26]]},{n:28,t:5,k:31,s:"follow",p:[["use",4.1],["walk",3.83],["recognize",3.77],["read",3.77],["move",3.64],["be",3.55],["play",3.53],["control",3.47],["do",3.42],["speak",3.4]]},{n:29,t:5,k:38,s:"pick",p:[["use",3.44],["walk",3.21],["recognize",3.17],["read",3.16],["move",3.05],["be",2.98],["play",2.96],["control",2.91],["do",2.86],["speak",2.85]]},{n:30,t:5,k:49,s:"perform",p:[["use",2.78],["walk",2.59],["recognize",2.56],["read",2.56],["move",2.46],["be",2.41],["play",2.39],["control",2.35],["do",2.31],["speak",2.3]]},{n:31,t:8,k:5,s:"recognize",p:[["use",20.9],["walk",20.03],["recognize",19.84],["read",19.84],["move",19.39],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:32,t:10,k:5,s:"walk",p:[["use",20.72],["walk",20.02],["recognize",19.88],["read",19.87],["move",19.51],["be",0],["play",0],["control",0],["do",0],["speak",0]]}];
 const PP=[{n:1,t:.2,v:.7,s:"use",p:[["use",84.61],["walk",15.39],["recognize",0],["read",0],["move",0],["be",0],["play",0],["control",0],["do",0],["speak",0]]},{n:2,t:.6,v:.9,s:"fly",p:[["use",17],["walk",9.63],["recognize",8.52],["read",8.5],["move",6.24],["be",5.13],["play",4.87],["control",4.26],["do",3.71],["speak",3.57]]},{n:3,t:.7,v:.7,s:"move",p:[["use",17.44],["walk",10.71],["recognize",9.64],["read",9.62],["move",7.38],["be",6.25],["play",5.98],["control",5.33],["do",4.73],["speak",4.58]]},{n:4,t:.8,v:.5,s:"recognize",p:[["use",19.62],["walk",12.81],["recognize",11.68],["read",11.66],["move",9.25],["be",7.99],["play",7.69],["control",6.95],["do",6.26],["speak",6.09]]},{n:5,t:1,v:.9,s:"be",p:[["use",8.77],["walk",6.24],["recognize",5.79],["read",5.78],["move",4.8],["be",4.27],["play",4.14],["control",3.82],["do",3.52],["speak",3.44]]},{n:6,t:2,v:.5,s:"read",p:[["use",8.19],["walk",6.91],["recognize",6.66],["read",6.66],["move",6.07],["be",5.72],["play",5.63],["control",5.41],["do",5.19],["speak",5.13]]},{n:7,t:5,v:.5,s:"speak",p:[["use",5.33],["walk",4.98],["recognize",4.91],["read",4.91],["move",4.73],["be",4.62],["play",4.59],["control",4.52],["do",4.44],["speak",4.42]]},{n:8,t:5,v:.7,s:"navigate",p:[["use",3.88],["walk",3.63],["recognize",3.57],["read",3.57],["move",3.44],["be",3.36],["play",3.34],["control",3.29],["do",3.23],["speak",3.22]]},{n:9,t:7,v:.9,s:"operate",p:[["use",2.75],["walk",2.62],["recognize",2.59],["read",2.59],["move",2.52],["be",2.48],["play",2.47],["control",2.44],["do",2.41],["speak",2.4]]},{n:10,t:8,v:.5,s:"swim",p:[["use",4.75],["walk",4.56],["recognize",4.51],["read",4.51],["move",4.41],["be",4.35],["play",4.33],["control",4.29],["do",4.24],["speak",4.23]]},{n:11,t:8,v:.7,s:"fly",p:[["use",3.45],["walk",3.3],["recognize",3.27],["read",3.27],["move",3.2],["be",3.15],["play",3.14],["control",3.11],["do",3.07],["speak",3.07]]}];
-Chart.defaults.color='#948E84';Chart.defaults.borderColor='rgba(221,213,200,.5)';Chart.defaults.font.family="'Libre Franklin',sans-serif";Chart.defaults.font.size=11;
-const C=['#1A7A6D','#D95D39','#C5973B','#1E3250','#2B9E8E','#E8815F','#7A6B5D','#4A8F84','#B85C3A','#6B8C6A'];
-function mt(id,d,pk){const tb=document.getElementById(id);d.forEach(r=>{const tr=document.createElement('tr');let h=`<td>${r.n}</td><td>${r.t}</td><td>${r[pk]}</td><td><span class="sl">${r.s}</span></td>`;r.p.forEach(([w,v])=>{const st=w===r.s?' style="color:#1A7A6D;font-weight:700"':'';h+=`<td${st}>${w} ${v}%</td>`});tr.innerHTML=h;tb.appendChild(tr)})}
+
+// === Chart defaults — adapt for dark/light ===
+Chart.defaults.font.family="system-ui,-apple-system,'Helvetica Neue',sans-serif";
+Chart.defaults.font.size=12;
+const CL=['#0066cc','#D95D39','#34A853','#1E3250','#0071e3','#E8815F','#7A6B5D','#4A8F84','#B85C3A','#6B8C6A'];
+const CD=['#2997ff','#FF6B6B','#4ECDC4','#95E1D3','#74B9FF','#FD79A8','#FFEAA7','#DFE6E9','#A29BFE','#81ECEC'];
+
+// === Build tables ===
+function mt(id,d,pk){const tb=document.getElementById(id);d.forEach(r=>{const tr=document.createElement('tr');let h=`<td>${r.n}</td><td>${r.t}</td><td>${r[pk]}</td><td><span class="sel">${r.s}</span></td>`;r.p.forEach(([w,v])=>{const st=w===r.s?' style="color:var(--primary);font-weight:700"':'';h+=`<td${st}>${w} ${v}%</td>`});tr.innerHTML=h;tb.appendChild(tr)})}
 mt('tb-k',K,'k');mt('tb-p',PP,'v');
-const g='rgba(221,213,200,.3)';
-new Chart(document.getElementById('c1'),{type:'scatter',data:{datasets:[{data:K.map(d=>({x:d.t,y:d.p[0][1]})),backgroundColor:C[0],borderColor:C[0],pointRadius:5,pointHoverRadius:8}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Temperature'},grid:{color:g}},y:{title:{display:true,text:'1순위 확률 (%)'},grid:{color:g},min:0,max:105}}}});
-new Chart(document.getElementById('c2'),{type:'scatter',data:{datasets:[{data:K.map(d=>({x:d.k,y:d.p[0][1]})),backgroundColor:C[1],borderColor:C[1],pointRadius:5,pointHoverRadius:8}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'k 값'},grid:{color:g}},y:{title:{display:true,text:'1순위 확률 (%)'},grid:{color:g},min:0,max:105}}}});
+
+// === CHART HELPERS ===
+const gL='rgba(0,0,0,0.06)';
+const gD='rgba(255,255,255,0.08)';
+const tL='#7a7a7a';
+const tD='rgba(255,255,255,0.5)';
+
+function isDark(canvasEl){return canvasEl.closest('.tile-dark,.tile-dark2,.tile-dark3,.tile-black')!==null}
+function cOpts(canvasEl){const dk=isDark(canvasEl);return{grid:dk?gD:gL,text:dk?tD:tL,pal:dk?CD:CL,bg:dk?'#2a2a2c':'#ffffff'}}
+
+// C1
+let o=cOpts(document.getElementById('c1'));
+new Chart(document.getElementById('c1'),{type:'scatter',data:{datasets:[{data:K.map(d=>({x:d.t,y:d.p[0][1]})),backgroundColor:o.pal[0],borderColor:o.pal[0],pointRadius:5,pointHoverRadius:8}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Temperature',color:o.text},grid:{color:o.grid},ticks:{color:o.text}},y:{title:{display:true,text:'1순위 확률 (%)',color:o.text},grid:{color:o.grid},ticks:{color:o.text},min:0,max:105}}}});
+// C2
+new Chart(document.getElementById('c2'),{type:'scatter',data:{datasets:[{data:K.map(d=>({x:d.k,y:d.p[0][1]})),backgroundColor:o.pal[1],borderColor:o.pal[1],pointRadius:5,pointHoverRadius:8}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'k 값',color:o.text},grid:{color:o.grid},ticks:{color:o.text}},y:{title:{display:true,text:'1순위 확률 (%)',color:o.text},grid:{color:o.grid},ticks:{color:o.text},min:0,max:105}}}});
+// C3
 const k5=K.filter(d=>d.k===5),w5=['use','walk','recognize','read','move'];
-new Chart(document.getElementById('c3'),{type:'bar',data:{labels:k5.map(d=>`T=${d.t}`),datasets:w5.map((w,i)=>({label:w,data:k5.map(d=>{const f=d.p.find(x=>x[0]===w);return f?f[1]:0}),backgroundColor:C[i],borderRadius:3}))},options:{responsive:true,plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:14}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,title:{display:true,text:'확률 (%)'},grid:{color:g},max:105}}}});
-new Chart(document.getElementById('c4'),{type:'bar',data:{labels:K.map(d=>`T${d.t}/k${d.k}`),datasets:[{data:K.map(d=>d.p.filter(x=>x[1]>0).length),backgroundColor:C[2],borderRadius:4}]},options:{responsive:true,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'유효 토큰 수'},grid:{color:g},max:11},y:{grid:{display:false},ticks:{font:{size:8}}}}}});
+new Chart(document.getElementById('c3'),{type:'bar',data:{labels:k5.map(d=>`T=${d.t}`),datasets:w5.map((w,i)=>({label:w,data:k5.map(d=>{const f=d.p.find(x=>x[0]===w);return f?f[1]:0}),backgroundColor:o.pal[i],borderRadius:3}))},options:{responsive:true,plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:14,color:o.text}}},scales:{x:{stacked:true,grid:{display:false},ticks:{color:o.text}},y:{stacked:true,title:{display:true,text:'확률 (%)',color:o.text},grid:{color:o.grid},ticks:{color:o.text},max:105}}}});
+// C4
+new Chart(document.getElementById('c4'),{type:'bar',data:{labels:K.map(d=>`T${d.t}/k${d.k}`),datasets:[{data:K.map(d=>d.p.filter(x=>x[1]>0).length),backgroundColor:o.pal[2],borderRadius:4}]},options:{responsive:true,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'유효 토큰 수',color:o.text},grid:{color:o.grid},ticks:{color:o.text},max:11},y:{grid:{display:false},ticks:{font:{size:8},color:o.text}}}}});
+// C5
 const kf={};K.forEach(d=>kf[d.s]=(kf[d.s]||0)+1);const ks=Object.entries(kf).sort((a,b)=>b[1]-a[1]);
-new Chart(document.getElementById('c5'),{type:'doughnut',data:{labels:ks.map(e=>e[0]),datasets:[{data:ks.map(e=>e[1]),backgroundColor:C.slice(0,ks.length),borderWidth:2,borderColor:'#FAF7F2'}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:10}}}}});
-new Chart(document.getElementById('c6'),{type:'scatter',data:{datasets:[{data:PP.map(d=>({x:d.t,y:d.p[0][1]})),backgroundColor:C[1],borderColor:C[1],pointRadius:6,pointHoverRadius:9}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Temperature'},grid:{color:g}},y:{title:{display:true,text:'1순위 확률 (%)'},grid:{color:g},min:0,max:90}}}});
-new Chart(document.getElementById('c7'),{type:'bar',data:{labels:PP.map(d=>`T${d.t}/p${d.v}`),datasets:w5.map((w,i)=>({label:w,data:PP.map(d=>{const f=d.p.find(x=>x[0]===w);return f?f[1]:0}),backgroundColor:C[i],borderRadius:2}))},options:{responsive:true,plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:10,font:{size:10}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:8},maxRotation:45}},y:{stacked:true,title:{display:true,text:'확률 (%)'},grid:{color:g}}}}});
-new Chart(document.getElementById('c8'),{type:'bar',data:{labels:PP.map(d=>`#${d.n}`),datasets:Array.from({length:10},(_,i)=>({label:`${i+1}순위`,data:PP.map(d=>d.p[i][1]),backgroundColor:C[i],borderRadius:i===0?3:0}))},options:{responsive:true,plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:6,font:{size:9}}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,title:{display:true,text:'확률 (%)'},grid:{color:g}}}}});
+new Chart(document.getElementById('c5'),{type:'doughnut',data:{labels:ks.map(e=>e[0]),datasets:[{data:ks.map(e=>e[1]),backgroundColor:o.pal.slice(0,ks.length),borderWidth:2,borderColor:o.bg}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:10,color:o.text}}}}});
+
+// C6-C9 (light)
+let oL=cOpts(document.getElementById('c6'));
+new Chart(document.getElementById('c6'),{type:'scatter',data:{datasets:[{data:PP.map(d=>({x:d.t,y:d.p[0][1]})),backgroundColor:oL.pal[1],borderColor:oL.pal[1],pointRadius:6,pointHoverRadius:9}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Temperature',color:oL.text},grid:{color:oL.grid},ticks:{color:oL.text}},y:{title:{display:true,text:'1순위 확률 (%)',color:oL.text},grid:{color:oL.grid},ticks:{color:oL.text},min:0,max:90}}}});
+new Chart(document.getElementById('c7'),{type:'bar',data:{labels:PP.map(d=>`T${d.t}/p${d.v}`),datasets:w5.map((w,i)=>({label:w,data:PP.map(d=>{const f=d.p.find(x=>x[0]===w);return f?f[1]:0}),backgroundColor:oL.pal[i],borderRadius:2}))},options:{responsive:true,plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:10,font:{size:10},color:oL.text}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:8},color:oL.text,maxRotation:45}},y:{stacked:true,title:{display:true,text:'확률 (%)',color:oL.text},grid:{color:oL.grid},ticks:{color:oL.text}}}}});
+new Chart(document.getElementById('c8'),{type:'bar',data:{labels:PP.map(d=>`#${d.n}`),datasets:Array.from({length:10},(_,i)=>({label:`${i+1}순위`,data:PP.map(d=>d.p[i][1]),backgroundColor:oL.pal[i],borderRadius:i===0?3:0}))},options:{responsive:true,plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:6,font:{size:9},color:oL.text}}},scales:{x:{stacked:true,grid:{display:false},ticks:{color:oL.text}},y:{stacked:true,title:{display:true,text:'확률 (%)',color:oL.text},grid:{color:oL.grid},ticks:{color:oL.text}}}}});
 const pf={};PP.forEach(d=>pf[d.s]=(pf[d.s]||0)+1);const ps=Object.entries(pf).sort((a,b)=>b[1]-a[1]);
-new Chart(document.getElementById('c9'),{type:'doughnut',data:{labels:ps.map(e=>e[0]),datasets:[{data:ps.map(e=>e[1]),backgroundColor:C.slice(0,ps.length),borderWidth:2,borderColor:'#FAF7F2'}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:10}}}}});
+new Chart(document.getElementById('c9'),{type:'doughnut',data:{labels:ps.map(e=>e[0]),datasets:[{data:ps.map(e=>e[1]),backgroundColor:oL.pal.slice(0,ps.length),borderWidth:2,borderColor:'#ffffff'}]},options:{responsive:true,plugins:{legend:{position:'right',labels:{usePointStyle:true,pointStyle:'circle',padding:10,color:oL.text}}}}});
+
+// === Scroll reveal ===
 const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('v')})},{threshold:.08,rootMargin:'0px 0px -40px 0px'});
-document.querySelectorAll('.fu,.fl,.fr,.fs').forEach(el=>obs.observe(el));
-let ly=0;window.addEventListener('scroll',()=>{const y=window.scrollY;const n=document.getElementById('nb');n.classList.toggle('hi',y>ly&&y>120);n.classList.toggle('sc',y>10);ly=y});
+document.querySelectorAll('.sr').forEach(el=>obs.observe(el));
+
+// === Nav hide/show ===
+let ly=0;window.addEventListener('scroll',()=>{const y=window.scrollY;document.getElementById('gnav').classList.toggle('hide',y>ly&&y>100);ly=y});
 </script>
 </body>
 </html>
